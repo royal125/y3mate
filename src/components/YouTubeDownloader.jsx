@@ -49,6 +49,33 @@ export default function YouTubeDownloader() {
   const [label, setLabel] = useState("");
   const [progress, setProgress] = useState(0);
 
+  const estimateAudioSize = (bitrateKbps) => {
+    const durationSeconds = Number(videoData?.durationSeconds || 0);
+    if (!durationSeconds || !bitrateKbps) return "—";
+    const sizeMb = (durationSeconds * bitrateKbps) / 8 / 1024;
+    return `${sizeMb.toFixed(2)} MB`;
+  };
+
+  const groupedFormats = Array.isArray(videoData?.formats)
+    ? (() => {
+        const byHeight = new Map();
+        for (const f of videoData.formats) {
+          if (f.ext !== "mp4") continue;
+          if (!byHeight.has(f.height)) {
+            byHeight.set(f.height, { height: f.height, quality: f.quality, items: [] });
+          }
+          byHeight.get(f.height).items.push(f);
+        }
+        return Array.from(byHeight.values());
+      })()
+    : [];
+
+  const audioOptions = [
+    { label: "MP3 64kbps", quality: "64K", bitrate: 64 },
+    { label: "MP3 128kbps", quality: "128K", bitrate: 128 },
+    { label: "MP3 192kbps", quality: "192K", bitrate: 192 },
+  ];
+
   useEffect(() => {
     if (progress === 100) {
       setLabel("Download complete");
@@ -113,6 +140,7 @@ export default function YouTubeDownloader() {
     await axios.post(`${API_BASE}/api/download/start`, {
       url,
       height: format.height,
+      ext: format.ext,
       title: videoData.title,
       id,
     });
@@ -137,41 +165,43 @@ export default function YouTubeDownloader() {
   }
 };
 
-    const downloadAudio = async () => {
-  if (showBar || !videoData) return;
+  const startAudioDownload = async (option) => {
+    if (showBar || !videoData) return;
 
-  const id = crypto.randomUUID();
-  setShowBar(true);
-  setLabel("Starting audio download…");
-  setProgress(0);
+    const id = crypto.randomUUID();
+    setShowBar(true);
+    setLabel(`Starting ${option.label}…`);
+    setProgress(0);
 
-  try {
-    await axios.post(`${API_BASE}/api/download/start`, {
-      url,
-      itag: "bestaudio",
-      title: videoData.title,
-      id,
-    });
+    try {
+      await axios.post(`${API_BASE}/api/download/start`, {
+        url,
+        title: videoData.title,
+        id,
+        audio: true,
+        audioFormat: "mp3",
+        audioQuality: option.quality,
+      });
 
-    const evtSource = new EventSource(`${API_BASE}/api/progress/${id}`);
+      const evtSource = new EventSource(`${API_BASE}/api/progress/${id}`);
 
-    evtSource.onmessage = (e) => {
-      const value = Number(e.data);
-      setProgress(value);
-      setLabel(value < 100 ? "Downloading audio…" : "Download complete!");
+      evtSource.onmessage = (e) => {
+        const value = Number(e.data);
+        setProgress(value);
+        setLabel(value < 100 ? "Downloading audio…" : "Download complete!");
 
-      if (value >= 100) {
-        evtSource.close();
-        setTimeout(() => {
-          window.location.href = `${API_BASE}/api/download/file/${id}`;
-        }, 1000);
-      }
-    };
-  } catch (err) {
-    setError("Audio download failed to start");
-    setShowBar(false);
-  }
-};
+        if (value >= 100) {
+          evtSource.close();
+          setTimeout(() => {
+            window.location.href = `${API_BASE}/api/download/file/${id}`;
+          }, 1000);
+        }
+      };
+    } catch (err) {
+      setError("Audio download failed to start");
+      setShowBar(false);
+    }
+  };
 
 
   return (
@@ -292,46 +322,73 @@ export default function YouTubeDownloader() {
                 <TableHead>
                   <TableRow>
                     <TableCell>Quality</TableCell>
+                    <TableCell>Format</TableCell>
                     <TableCell>Size</TableCell>
                     <TableCell align="center">Action</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {Array.isArray(videoData?.formats) &&
-                    videoData.formats.map((f) => (
-                      <TableRow key={f.itag}>
-                        <TableCell>
-                          {f.quality}
-                        </TableCell>
-                        <TableCell>{f.size}</TableCell>
-                        <TableCell align="center">
-                          <Button
-                            variant="contained"
-                            size="small"
-                            className="yt-primary"
-                            onClick={() => startDownload(f)}
-                          >
-                            Download
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                  {groupedFormats.map((group) => (
+                    <TableRow key={group.height}>
+                      <TableCell>{group.quality}</TableCell>
+                      <TableCell>mp4</TableCell>
+                      <TableCell>
+                        {group.items.map((item) => item.size).join(" / ")}
+                      </TableCell>
+                      <TableCell align="center">
+                        <Box display="flex" justifyContent="center" gap={1} flexWrap="wrap">
+                          {group.items.map((item) => (
+                            <Button
+                              key={`${group.height}-${item.ext}`}
+                              variant="contained"
+                              size="small"
+                              className="yt-primary"
+                              onClick={() => startDownload(item)}
+                            >
+                              Download {item.ext}
+                            </Button>
+                          ))}
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </TableContainer>
           )}
 
           {tab === 1 && (
-            <Box textAlign="center" mt={3}>
-              <Button
-                variant="contained"
-                size="small"
-                className="yt-primary"
-                onClick={downloadAudio}
-              >
-                Download MP3
-              </Button>
-            </Box>
+            <TableContainer component={Paper} className="glass-table">
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Quality</TableCell>
+                    <TableCell>Format</TableCell>
+                    <TableCell>Size</TableCell>
+                    <TableCell align="center">Action</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {audioOptions.map((option) => (
+                    <TableRow key={option.quality}>
+                      <TableCell>{option.label}</TableCell>
+                      <TableCell>mp3</TableCell>
+                      <TableCell>{estimateAudioSize(option.bitrate)}</TableCell>
+                      <TableCell align="center">
+                        <Button
+                          variant="contained"
+                          size="small"
+                          className="yt-primary"
+                          onClick={() => startAudioDownload(option)}
+                        >
+                          Download
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
           )}
         </>
       )}
