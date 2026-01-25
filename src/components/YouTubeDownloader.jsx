@@ -20,7 +20,7 @@ import { PlayArrow, YouTube } from "@mui/icons-material";
 import axios from "axios";
 import { motion } from "framer-motion";
 import Lottie from "lottie-react";
-import loaderAnim from "./assets/loader.json";
+import youtubeLoader from "../components/pages/youtube.json";
 
 /* ===== HOMEPAGE SECTIONS ===== */
 import CategoryButtons from "../components/CategoryButtons";
@@ -48,33 +48,6 @@ export default function YouTubeDownloader() {
   const [showBar, setShowBar] = useState(false);
   const [label, setLabel] = useState("");
   const [progress, setProgress] = useState(0);
-
-  const estimateAudioSize = (bitrateKbps) => {
-    const durationSeconds = Number(videoData?.durationSeconds || 0);
-    if (!durationSeconds || !bitrateKbps) return "—";
-    const sizeMb = (durationSeconds * bitrateKbps) / 8 / 1024;
-    return `${sizeMb.toFixed(2)} MB`;
-  };
-
-  const groupedFormats = Array.isArray(videoData?.formats)
-    ? (() => {
-        const byHeight = new Map();
-        for (const f of videoData.formats) {
-          if (f.ext !== "mp4") continue;
-          if (!byHeight.has(f.height)) {
-            byHeight.set(f.height, { height: f.height, quality: f.quality, items: [] });
-          }
-          byHeight.get(f.height).items.push(f);
-        }
-        return Array.from(byHeight.values());
-      })()
-    : [];
-
-  const audioOptions = [
-    { label: "MP3 64kbps", quality: "64K", bitrate: 64 },
-    { label: "MP3 128kbps", quality: "128K", bitrate: 128 },
-    { label: "MP3 192kbps", quality: "192K", bitrate: 192 },
-  ];
 
   useEffect(() => {
     if (progress === 100) {
@@ -128,77 +101,78 @@ export default function YouTubeDownloader() {
     }
   };
   /* ===================== DOWNLOAD ===================== */
- const startDownload = async (format) => {
-  if (showBar) return;
+  const startDownload = async (format) => {
+    if (showBar || !url || !videoData) return;
 
-  const id = crypto.randomUUID();
-  setShowBar(true);
-  setLabel("Starting download…");
-  setProgress(0);
+    const safeTitle = videoData.title
+      .replace(/[^\w\s-]/g, "")
+      .replace(/\s+/g, "_")
+      .substring(0, 50);
 
-  try {
-    await axios.post(`${API_BASE}/api/download/start`, {
-      url,
-      height: format.height,
-      ext: format.ext,
-      title: videoData.title,
-      id,
-    });
-
-    const evtSource = new EventSource(`${API_BASE}/api/progress/${id}`);
-
-    evtSource.onmessage = (e) => {
-      const value = Number(e.data);
-      setProgress(value);
-      setLabel(value < 100 ? "Downloading…" : "Download complete!");
-
-      if (value >= 100) {
-        evtSource.close();
-        setTimeout(() => {
-          window.location.href = `${API_BASE}/api/download/file/${id}`;
-        }, 1000);
-      }
-    };
-  } catch (err) {
-    setError("Download failed to start");
-    setShowBar(false);
-  }
-};
-
-  const startAudioDownload = async (option) => {
-    if (showBar || !videoData) return;
-
-    const id = crypto.randomUUID();
     setShowBar(true);
-    setLabel(`Starting ${option.label}…`);
+    setLabel("Downloading…");
     setProgress(0);
 
     try {
-      await axios.post(`${API_BASE}/api/download/start`, {
-        url,
-        title: videoData.title,
-        id,
-        audio: true,
-        audioFormat: "mp3",
-        audioQuality: option.quality,
-      });
+      const response = await fetch(
+        `${API_BASE}/api/download?url=${encodeURIComponent(url)}&height=${format.height}&title=${encodeURIComponent(safeTitle)}`
+      );
 
-      const evtSource = new EventSource(`${API_BASE}/api/progress/${id}`);
+      if (!response.ok) throw new Error("Download failed");
 
-      evtSource.onmessage = (e) => {
-        const value = Number(e.data);
-        setProgress(value);
-        setLabel(value < 100 ? "Downloading audio…" : "Download complete!");
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = `${safeTitle}_${format.height}p.mp4`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
 
-        if (value >= 100) {
-          evtSource.close();
-          setTimeout(() => {
-            window.location.href = `${API_BASE}/api/download/file/${id}`;
-          }, 1000);
-        }
-      };
+      setProgress(100);
+      setLabel("Download complete");
+      setTimeout(() => setShowBar(false), 1500);
     } catch (err) {
-      setError("Audio download failed to start");
+      setError("Download failed");
+      setShowBar(false);
+    }
+  };
+
+  const downloadAudio = async () => {
+    if (showBar || !url || !videoData) return;
+
+    const safeTitle = videoData.title
+      .replace(/[^\w\s-]/g, "")
+      .replace(/\s+/g, "_")
+      .substring(0, 50);
+
+    setShowBar(true);
+    setLabel("Downloading audio…");
+    setProgress(0);
+
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/download?url=${encodeURIComponent(url)}&height=audio&title=${encodeURIComponent(safeTitle)}`
+      );
+
+      if (!response.ok) throw new Error("Download failed");
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = `${safeTitle}_audio.mp3`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+
+      setProgress(100);
+      setLabel("Download complete");
+      setTimeout(() => setShowBar(false), 1500);
+    } catch (err) {
+      setError("Download failed");
       setShowBar(false);
     }
   };
@@ -261,7 +235,7 @@ export default function YouTubeDownloader() {
       {loading && (
         <Box display="flex" justifyContent="center" mb={3}>
           <Lottie
-            animationData={loaderAnim}
+            animationData={youtubeLoader}
             style={{ width: 180, height: 180 }}
             loop
           />
@@ -322,73 +296,51 @@ export default function YouTubeDownloader() {
                 <TableHead>
                   <TableRow>
                     <TableCell>Quality</TableCell>
-                    <TableCell>Format</TableCell>
                     <TableCell>Size</TableCell>
                     <TableCell align="center">Action</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {groupedFormats.map((group) => (
-                    <TableRow key={group.height}>
-                      <TableCell>{group.quality}</TableCell>
-                      <TableCell>mp4</TableCell>
-                      <TableCell>
-                        {group.items.map((item) => item.size).join(" / ")}
-                      </TableCell>
-                      <TableCell align="center">
-                        <Box display="flex" justifyContent="center" gap={1} flexWrap="wrap">
-                          {group.items.map((item) => (
-                            <Button
-                              key={`${group.height}-${item.ext}`}
-                              variant="contained"
-                              size="small"
-                              className="yt-primary"
-                              onClick={() => startDownload(item)}
-                            >
-                              Download {item.ext}
-                            </Button>
-                          ))}
-                        </Box>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {Array.isArray(videoData?.formats) &&
+                    videoData.formats.map((f) => (
+                      <TableRow key={f.itag}>
+                        <TableCell>
+                          {f.quality}
+                          {!f.hasAudio && (
+                            <span style={{ color: "#ff9800", marginLeft: 6 }}>
+                              (video only)
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell>{f.size}</TableCell>
+                        <TableCell align="center">
+                          <Button
+                            variant="contained"
+                            size="small"
+                            className="yt-primary"
+                            onClick={() => startDownload(f)}
+                          >
+                            Download
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
                 </TableBody>
               </Table>
             </TableContainer>
           )}
 
           {tab === 1 && (
-            <TableContainer component={Paper} className="glass-table">
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Quality</TableCell>
-                    <TableCell>Format</TableCell>
-                    <TableCell>Size</TableCell>
-                    <TableCell align="center">Action</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {audioOptions.map((option) => (
-                    <TableRow key={option.quality}>
-                      <TableCell>{option.label}</TableCell>
-                      <TableCell>mp3</TableCell>
-                      <TableCell>{estimateAudioSize(option.bitrate)}</TableCell>
-                      <TableCell align="center">
-                        <Button
-                          variant="contained"
-                          size="small"
-                          className="yt-primary"
-                          onClick={() => startAudioDownload(option)}
-                        >
-                          Download
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
+            <Box textAlign="center" mt={3}>
+              <Button
+                variant="contained"
+                size="small"
+                className="yt-primary"
+                onClick={downloadAudio}
+              >
+                Download MP3
+              </Button>
+            </Box>
           )}
         </>
       )}
