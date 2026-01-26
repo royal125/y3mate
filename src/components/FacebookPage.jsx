@@ -20,8 +20,10 @@ const FacebookPage = () => {
   const [progress, setProgress] = useState(0);
   const [downloading, setDownloading] = useState(false);
 
-  const API_BASE =
-    process.env.REACT_APP_API_BASE || "http://localhost:5000";
+    const API_BASE = process.env.REACT_APP_API_BASE;
+    if (!API_BASE) {
+  throw new Error("REACT_APP_API_BASE is not defined");
+}
 
   const generateId = () =>
     window.crypto?.randomUUID?.() ||

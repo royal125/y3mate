@@ -29,8 +29,11 @@ import CarouselSection from "../components/CarouselSection";
 import FAQSection from "../components/FAQSection";
 
 /* ✅ CORRECT API BASE */
-const API_BASE =
-  (process.env.REACT_APP_API_BASE || "http://localhost:5000").replace(/\/$/, "");
+ const API_BASE = process.env.REACT_APP_API_BASE;
+    if (!API_BASE) {
+  throw new Error("REACT_APP_API_BASE is not defined");
+}
+
 
 console.log("API_BASE:", API_BASE);
 
