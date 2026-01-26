@@ -78,7 +78,7 @@ export default function YouTubeDownloader() {
           headers: {
             "Content-Type": "application/json",
           },
-          timeout: 60000,
+          timeout: 180000,
         }
       );
 
