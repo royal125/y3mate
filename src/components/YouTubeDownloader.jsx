@@ -72,13 +72,13 @@ export default function YouTubeDownloader() {
       const cleanUrl = url.trim();
 
       const res = await axios.post(
-        `${API_BASE}/api/info`,
+        `${API_BASE}/info`,
         { url: cleanUrl },
         {
           headers: {
             "Content-Type": "application/json",
           },
-          timeout: 180000,
+          timeout: 60000,
         }
       );
 

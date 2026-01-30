@@ -12,11 +12,8 @@ import {
 } from "@mui/material";
 import axios from "axios";
 
- const API_BASE = process.env.REACT_APP_API_BASE;
-    if (!API_BASE) {
-  throw new Error("REACT_APP_API_BASE is not defined");
-}
-
+const API_BASE =
+  process.env.REACT_APP_API_BASE || "http://localhost:5000";
 
 
 export default function InstagramDownloader() {
